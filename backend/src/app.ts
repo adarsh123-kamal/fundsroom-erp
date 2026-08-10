@@ -14,63 +14,62 @@ import dashboardRoutes from './routes/dashboard.routes';
 const app = express();
 
 // CORS
+const normalizeOrigin = (origin: string): string => origin.trim().replace(/\/+$/, '');
+
 const allowedOrigins = [
   config.frontendUrl,
   'https://fundsroom-erp-frontend.vercel.app',
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:3000',
-];
+]
+  .filter(Boolean)
+  .map(normalizeOrigin);
 
-const isAllowedOrigin = (origin: string): boolean => {
-  // Exact allowed origins
-  if (allowedOrigins.includes(origin)) {
-    return true;
+const isLocalOrigin = (origin: string): boolean =>
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+
+const isVercelFrontendOrigin = (origin: string): boolean => {
+  try {
+    const url = new URL(origin);
+    return (
+      url.protocol === 'https:' &&
+      /^fundsroom-erp-frontend(?:-[a-z0-9-]+)*\.vercel\.app$/.test(url.hostname)
+    );
+  } catch {
+    return false;
   }
-
-  // Allow localhost with any port
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
-    return true;
-  }
-
-  // Allow Vercel preview deployments for this project
-  if (
-    origin.startsWith('https://fundsroom-erp-frontend-') &&
-    origin.endsWith('.vercel.app')
-  ) {
-    return true;
-  }
-
-  return false;
 };
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Requests without an Origin header
-      // (for example direct browser/API requests)
-      if (!origin) {
-        callback(null, true);
-        return;
-      }
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
 
-      if (isAllowedOrigin(origin)) {
-        console.log('✅ CORS allowed:', origin);
-        callback(null, true);
-        return;
-      }
+    const normalizedOrigin = normalizeOrigin(origin);
 
-      console.error('❌ CORS blocked origin:', origin);
-      callback(new Error('CORS policy does not allow access from the specified Origin.'));
-    },
+    if (
+      allowedOrigins.includes(normalizedOrigin) ||
+      isLocalOrigin(normalizedOrigin) ||
+      isVercelFrontendOrigin(normalizedOrigin)
+    ) {
+      console.log('✅ CORS allowed:', normalizedOrigin);
+      callback(null, true);
+      return;
+    }
 
-    credentials: true,
+    console.error('❌ CORS blocked origin:', normalizedOrigin);
+    callback(new Error('CORS policy does not allow access from the specified Origin.'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
 
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  })
-);
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
